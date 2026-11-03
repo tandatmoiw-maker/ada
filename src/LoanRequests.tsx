@@ -1,0 +1,17 @@
+import { matchingRequests } from './requestQueries';
+import { useState } from 'react';
+import { useLibrary } from './store';
+import { Avatar, Empty, Field, Icon, Modal } from './components';
+import { dateLabel, today } from './domain';
+import { updateRequest } from './circulation';
+
+export default function LoanRequests({ search }: { search: string }) {
+  const { data, act, navigate } = useLibrary(); const [declineId, setDeclineId] = useState<string | null>(null), [reason, setReason] = useState('');
+  const rows = matchingRequests(data, search);
+  if (!rows.length) return <Empty title="Chưa có yêu cầu giữ sách" description="Yêu cầu từ tài khoản độc giả sẽ xuất hiện tại đây để chuẩn bị và bàn giao." />;
+  return <><div className="table-scroll" role="region" aria-label="Yêu cầu giữ sách trực tuyến" tabIndex={0}><table><thead><tr><th>Yêu cầu / độc giả</th><th>Sách giữ</th><th>Nhận trước ngày</th><th>Trạng thái</th><th>Thao tác</th></tr></thead><tbody>{rows.map(r => {
+    const reader = data.readers.find(x => x.id === r.readerId)!; const active = ['pending', 'ready'].includes(r.status) && r.expiresAt >= today();
+    const label = !active && ['pending', 'ready'].includes(r.status) ? 'Hết hạn giữ' : ({ pending: 'Chờ chuẩn bị', ready: 'Sẵn sàng nhận', fulfilled: 'Đã bàn giao', cancelled: 'Độc giả hủy', declined: 'Đã từ chối' }[r.status]);
+    return <tr key={r.id}><td><div className="person-cell"><Avatar reader={reader} small /><span><strong>{reader.name}</strong><small>{r.id} · {reader.id}</small></span></div></td><td><span className="request-books-cell">{r.copyIds.map(id => data.books.find(b => b.copies.some(c => c.id === id))?.title).join(', ')}</span><small className="cell-sub">{r.copyIds.length} bản · {r.copyIds.join(', ')}</small></td><td>{dateLabel(r.expiresAt)}<small className="cell-sub">Gửi {dateLabel(r.createdAt)}</small></td><td><span className={`badge ${r.status === 'ready' || r.status === 'fulfilled' ? 'active' : active ? 'pending' : 'returned'}`}>{label}</span></td><td><div className="request-row-actions">{active && <>{r.status === 'pending' && <button className="button small secondary" onClick={() => act(d => updateRequest(d, r.id, 'ready'), 'Đã đánh dấu sách sẵn sàng nhận tại quầy.')}>Sẵn sàng nhận</button>}<button className="button small primary" onClick={() => { navigate('counter'); location.hash = `counter?request=${r.id}`; }}>Bàn giao & lập phiếu</button><button className="icon-button" aria-label={`Từ chối ${r.id}`} onClick={() => { setDeclineId(r.id); setReason(''); }}><Icon name="X" size={16} /></button></>}{r.loanId && <span className="cell-sub">Phiếu {r.loanId}</span>}</div></td></tr>;
+  })}</tbody></table></div>{declineId && <Modal title="Từ chối yêu cầu giữ sách" onClose={() => setDeclineId(null)}><form onSubmit={e => { e.preventDefault(); if (act(d => updateRequest(d, declineId, 'declined', reason), 'Đã từ chối yêu cầu và trả sách về kho khả dụng.')) setDeclineId(null); }}><div className="modal-body"><Field label="Lý do gửi đến độc giả *"><textarea required minLength={3} maxLength={250} placeholder="Ví dụ: sách đang cần kiểm tra tình trạng" value={reason} onChange={e => setReason(e.target.value)} /></Field></div><div className="modal-footer"><button className="button secondary" type="button" onClick={() => setDeclineId(null)}>Quay lại</button><button className="button primary" type="submit">Xác nhận từ chối</button></div></form></Modal>}</>;
+}
